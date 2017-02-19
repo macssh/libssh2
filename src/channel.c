@@ -2242,7 +2242,7 @@ static int channel_wait_eof(LIBSSH2_CHANNEL *channel)
 
     if (channel->wait_eof_state == libssh2_NB_state_idle) {
         _libssh2_debug(session, LIBSSH2_TRACE_CONN,
-                       "Awaiting close of channel %lu/%lu", channel->local.id,
+                       "Awaiting EOF for channel %lu/%lu", channel->local.id,
                        channel->remote.id);
 
         channel->wait_eof_state = libssh2_NB_state_created;
@@ -2256,6 +2256,12 @@ static int channel_wait_eof(LIBSSH2_CHANNEL *channel)
         if (channel->remote.eof) {
             break;
         }
+
+        if ((channel->remote.window_size == channel->read_avail) &&
+            session->api_block_mode)
+            return _libssh2_error(session, LIBSSH2_ERROR_CHANNEL_WINDOW_FULL,
+                                  "Receiving channel window has been exhausted");
+
         rc = _libssh2_transport_read(session);
         if (rc == LIBSSH2_ERROR_EAGAIN) {
             return rc;
@@ -2396,7 +2402,7 @@ static int channel_wait_closed(LIBSSH2_CHANNEL *channel)
     LIBSSH2_SESSION *session = channel->session;
     int rc;
 
-    if (!libssh2_channel_eof(channel)) {
+    if (!channel->remote.eof) {
         return _libssh2_error(session, LIBSSH2_ERROR_INVAL,
                               "libssh2_channel_wait_closed() invoked when "
                               "channel is not in EOF state");

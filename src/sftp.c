@@ -836,8 +836,11 @@ static LIBSSH2_SFTP *sftp_init(LIBSSH2_SESSION *session)
 
     rc = sftp_packet_require(sftp_handle, SSH_FXP_VERSION,
                              0, &data, &data_len);
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-        return NULL;
+    if (rc == LIBSSH2_ERROR_EAGAIN) {
+         _libssh2_error(session, LIBSSH2_ERROR_EAGAIN,
+                        "Would block receiving SSH_FXP_VERSION");
+         return NULL;
+    }
     else if (rc) {
         _libssh2_error(session, rc,
                        "Timeout waiting for response from SFTP subsystem");
@@ -3390,8 +3393,6 @@ static int sftp_symlink(LIBSSH2_SFTP *sftp, const char *path,
     sftp->symlink_state = libssh2_NB_state_idle;
 
     if (data[0] == SSH_FXP_STATUS) {
-        int retcode;
-
         retcode = _libssh2_ntohu32(data + 5);
         LIBSSH2_FREE(session, data);
         if (retcode == LIBSSH2_FX_OK)
