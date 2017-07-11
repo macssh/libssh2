@@ -173,7 +173,10 @@
 /* #undef LIBSSH2_MAC_NONE */
 
 /* Use OpenSSL */
-#define LIBSSH2_OPENSSL 1
+/* #undef LIBSSH2_OPENSSL */
+
+/* Use mbed TLS */
+#define LIBSSH2_MBEDTLS 1
 
 /* Use Windows CNG */
 /* #undef LIBSSH2_WINCNG */
