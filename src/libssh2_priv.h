@@ -609,6 +609,9 @@ struct _LIBSSH2_SESSION
     unsigned char server_hostkey_sha1[SHA_DIGEST_LENGTH];
     int server_hostkey_sha1_valid;
 
+    unsigned char server_hostkey_sha256[SHA256_DIGEST_LENGTH];
+    int server_hostkey_sha256_valid;
+
     /* (remote as source of data -- packet_read ) */
     libssh2_endpoint_data remote;
 
@@ -884,6 +887,7 @@ struct _LIBSSH2_HOSTKEY_METHOD
 struct _LIBSSH2_CRYPT_METHOD
 {
     const char *name;
+    const char *pem_annotation;
 
     int blocksize;
 
@@ -1041,6 +1045,7 @@ const LIBSSH2_HOSTKEY_METHOD **libssh2_hostkey_methods(void);
 int _libssh2_pem_parse(LIBSSH2_SESSION * session,
                        const char *headerbegin,
                        const char *headerend,
+                       const unsigned char *passphrase,
                        FILE * fp, unsigned char **data, unsigned int *datalen);
 int _libssh2_pem_parse_memory(LIBSSH2_SESSION * session,
                               const char *headerbegin,

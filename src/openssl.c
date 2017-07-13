@@ -43,6 +43,7 @@
 #ifdef LIBSSH2_OPENSSL /* compile only if we build with openssl */
 
 #include <string.h>
+#include "misc.h"
 
 #ifndef EVP_MAX_BLOCK_LENGTH
 #define EVP_MAX_BLOCK_LENGTH 32
@@ -364,15 +365,8 @@ aes_ctr_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
         return 0;
     }
 
-    for (i = 0; i < 16; i++)
-        *out++ = *in++ ^ b1[i];
-
-    i = 15;
-    while (c->ctr[i]++ == 0xFF) {
-        if (i == 0)
-            break;
-        i--;
-    }
+    _libssh2_xor_data(out, in, b1, AES_BLOCK_SIZE);
+    _libssh2_aes_ctr_increment(c->ctr, AES_BLOCK_SIZE);
 
     return 1;
 }
@@ -1062,14 +1056,7 @@ _libssh2_pub_priv_keyfile(LIBSSH2_SESSION *session,
                               "Unable to extract public key from private key "
                               "file: Unable to open private key file");
     }
-    if (!EVP_get_cipherbyname("des")) {
-        /* If this cipher isn't loaded it's a pretty good indication that none
-         * are.  I have *NO DOUBT* that there's a better way to deal with this
-         * ($#&%#$(%$#( Someone buy me an OpenSSL manual and I'll read up on
-         * it.
-         */
-        OpenSSL_add_all_ciphers();
-    }
+
     BIO_reset(bp);
     pk = PEM_read_bio_PrivateKey(bp, NULL, NULL, (void*)passphrase);
     BIO_free(bp);
@@ -1138,6 +1125,7 @@ _libssh2_pub_priv_keyfilememory(LIBSSH2_SESSION *session,
     if (!bp) {
         return -1;
     }
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     if (!EVP_get_cipherbyname("des")) {
         /* If this cipher isn't loaded it's a pretty good indication that none
          * are.  I have *NO DOUBT* that there's a better way to deal with this
@@ -1146,6 +1134,7 @@ _libssh2_pub_priv_keyfilememory(LIBSSH2_SESSION *session,
          */
         OpenSSL_add_all_ciphers();
     }
+#endif
     BIO_reset(bp);
     pk = PEM_read_bio_PrivateKey(bp, NULL, NULL, (void*)passphrase);
     BIO_free(bp);
