@@ -64,6 +64,7 @@
 #define LIBSSH2_RSA 1
 #define LIBSSH2_DSA 1
 #define LIBSSH2_ECDSA 0
+#define LIBSSH2_ED25519 0
 
 #define MD5_DIGEST_LENGTH 16
 #define SHA_DIGEST_LENGTH 20
@@ -309,7 +310,8 @@ struct _libssh2_wincng_cipher_ctx {
 struct _libssh2_wincng_cipher_type {
     BCRYPT_ALG_HANDLE *phAlg;
     unsigned long dwKeyLength;
-    int useIV;      /* TODO: Convert to bool when a C89 compatible bool type is defined */
+    int useIV;      /* TODO: Convert to bool when a C89 compatible bool type
+                       is defined */
     int ctrMode;
 };
 

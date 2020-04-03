@@ -1,5 +1,5 @@
 /* Copyright (c) 2004-2007 Sara Golemon <sarag@libssh2.org>
- * Copyright (c) 2009-2014 by Daniel Stenberg
+ * Copyright (c) 2009-2019 by Daniel Stenberg
  * Copyright (c) 2010  Simon Josefsson
  * All rights reserved.
  *
@@ -39,6 +39,11 @@
 
 #include "libssh2_priv.h"
 #include "misc.h"
+#include "blf.h"
+
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -48,10 +53,17 @@
 #include <sys/time.h>
 #endif
 
+#if defined(HAVE_DECL_SECUREZEROMEMORY) && HAVE_DECL_SECUREZEROMEMORY
+#ifdef HAVE_WINDOWS_H
+#include <windows.h>
+#endif
+#endif
+
 #include <stdio.h>
 #include <errno.h>
 
-int _libssh2_error_flags(LIBSSH2_SESSION* session, int errcode, const char *errmsg, int errflags)
+int _libssh2_error_flags(LIBSSH2_SESSION* session, int errcode,
+                         const char *errmsg, int errflags)
 {
     if(session->err_flags & LIBSSH2_ERR_FLAG_DUP)
         LIBSSH2_FREE(session, (char *)session->err_msg);
@@ -331,7 +343,8 @@ size_t _libssh2_base64_encode(LIBSSH2_SESSION *session,
     char *base64data;
     const char *indata = inp;
 
-    *outptr = NULL; /* set to NULL in case of failure before we reach the end */
+    *outptr = NULL; /* set to NULL in case of failure before we reach the
+                       end */
 
     if(0 == insize)
         insize = strlen(indata);
@@ -674,4 +687,188 @@ void _libssh2_aes_ctr_increment(unsigned char *ctr,
         *pc-- = val & 0xFF;
         carry = val >> 8;
     }
+}
+
+#ifdef WIN32
+static void * (__cdecl * const volatile memset_libssh)(void *, int, size_t) =
+    memset;
+#else
+static void * (* const volatile memset_libssh)(void *, int, size_t) = memset;
+#endif
+
+void _libssh2_explicit_zero(void *buf, size_t size)
+{
+#if defined(HAVE_DECL_SECUREZEROMEMORY) && HAVE_DECL_SECUREZEROMEMORY
+    SecureZeroMemory(buf, size);
+    (void)memset_libssh; /* Silence unused variable warning */
+#elif defined(HAVE_MEMSET_S)
+    (void)memset_s(buf, size, 0, size);
+    (void)memset_libssh; /* Silence unused variable warning */
+#else
+    memset_libssh(buf, 0, size);
+#endif
+}
+
+/* String buffer */
+
+struct string_buf* _libssh2_string_buf_new(LIBSSH2_SESSION *session)
+{
+    struct string_buf *ret;
+
+    ret = _libssh2_calloc(session, sizeof(*ret));
+    if(ret == NULL)
+        return NULL;
+
+    return ret;
+}
+
+void _libssh2_string_buf_free(LIBSSH2_SESSION *session, struct string_buf *buf)
+{
+    if(buf == NULL)
+        return;
+
+    if(buf->data != NULL)
+        LIBSSH2_FREE(session, buf->data);
+
+    LIBSSH2_FREE(session, buf);
+    buf = NULL;
+}
+
+int _libssh2_get_u32(struct string_buf *buf, uint32_t *out)
+{
+    if(!_libssh2_check_length(buf, 4)) {
+        return -1;
+    }
+
+    *out = _libssh2_ntohu32(buf->dataptr);
+    buf->dataptr += 4;
+    return 0;
+}
+
+int _libssh2_get_u64(struct string_buf *buf, libssh2_uint64_t *out)
+{
+    if(!_libssh2_check_length(buf, 8)) {
+        return -1;
+    }
+
+    *out = _libssh2_ntohu64(buf->dataptr);
+    buf->dataptr += 8;
+    return 0;
+}
+
+int _libssh2_match_string(struct string_buf *buf, const char *match)
+{
+    unsigned char *out;
+    size_t len = 0;
+    if(_libssh2_get_string(buf, &out, &len) || len != strlen(match) ||
+        strncmp((char *)out, match, strlen(match)) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int _libssh2_get_string(struct string_buf *buf, unsigned char **outbuf,
+                        size_t *outlen)
+{
+    uint32_t data_len;
+    if(_libssh2_get_u32(buf, &data_len) != 0) {
+        return -1;
+    }
+    if(!_libssh2_check_length(buf, data_len)) {
+        return -1;
+    }
+    *outbuf = buf->dataptr;
+    buf->dataptr += data_len;
+
+    if(outlen)
+        *outlen = (size_t)data_len;
+
+    return 0;
+}
+
+int _libssh2_copy_string(LIBSSH2_SESSION *session, struct string_buf *buf,
+                         unsigned char **outbuf, size_t *outlen)
+{
+    size_t str_len;
+    unsigned char *str;
+
+    if(_libssh2_get_string(buf, &str, &str_len)) {
+        return -1;
+    }
+
+    *outbuf = LIBSSH2_ALLOC(session, str_len);
+    if(*outbuf) {
+        memcpy(*outbuf, str, str_len);
+    }
+    else {
+        return -1;
+    }
+
+    if(outlen)
+        *outlen = str_len;
+
+    return 0;
+}
+
+int _libssh2_get_bignum_bytes(struct string_buf *buf, unsigned char **outbuf,
+                              size_t *outlen)
+{
+    uint32_t data_len;
+    uint32_t bn_len;
+    unsigned char *bnptr;
+
+    if(_libssh2_get_u32(buf, &data_len)) {
+        return -1;
+    }
+    if(!_libssh2_check_length(buf, data_len)) {
+        return -1;
+    }
+
+    bn_len = data_len;
+    bnptr = buf->dataptr;
+
+    /* trim leading zeros */
+    while(bn_len > 0 && *bnptr == 0x00) {
+        bn_len--;
+        bnptr++;
+    }
+
+    *outbuf = bnptr;
+    buf->dataptr += data_len;
+
+    if(outlen)
+        *outlen = (size_t)bn_len;
+
+    return 0;
+}
+
+/* Given the current location in buf, _libssh2_check_length ensures
+   callers can read the next len number of bytes out of the buffer
+   before reading the buffer content */
+
+int _libssh2_check_length(struct string_buf *buf, size_t len)
+{
+    unsigned char *endp = &buf->data[buf->len];
+    size_t left = endp - buf->dataptr;
+    return ((len <= left) && (left <= buf->len));
+}
+
+/* Wrappers */
+
+int _libssh2_bcrypt_pbkdf(const char *pass,
+                          size_t passlen,
+                          const uint8_t *salt,
+                          size_t saltlen,
+                          uint8_t *key,
+                          size_t keylen,
+                          unsigned int rounds)
+{
+    /* defined in bcrypt_pbkdf.c */
+    return bcrypt_pbkdf(pass,
+                        passlen,
+                        salt,
+                        saltlen,
+                        key,
+                        keylen,
+                        rounds);
 }
