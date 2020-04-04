@@ -306,7 +306,7 @@ extern void _libssh2_openssl_crypto_exit(void);
 
 #define _libssh2_dsa_free(dsactx) DSA_free(dsactx)
 
-#ifdef LIBSSH2_ECDSA
+#if LIBSSH2_ECDSA
 #define libssh2_ecdsa_ctx EC_KEY
 #define _libssh2_ecdsa_free(ecdsactx) EC_KEY_free(ecdsactx)
 #define _libssh2_ec_key EC_KEY
@@ -321,27 +321,12 @@ libssh2_curve_type;
 #define _libssh2_ec_key void
 #endif /* LIBSSH2_ECDSA */
 
-#ifdef LIBSSH2_ED25519
+#if LIBSSH2_ED25519
+#define libssh2_ed25519_ctx EVP_PKEY
+#define libssh2_x25519_ctx EVP_PKEY
 
-typedef struct {
-    EVP_PKEY *public_key;
-    EVP_PKEY *private_key;
-} libssh2_curve25519_keys;
-
-#define libssh2_ed25519_ctx libssh2_curve25519_keys
-#define libssh2_x25519_ctx libssh2_curve25519_keys
-
-#define _libssh2_ed25519_new_ctx() calloc(1, sizeof(libssh2_ed25519_ctx))
-#define _libssh2_ed25519_free(ctx) do { \
- if(ctx) { \
-  if(ctx->public_key) EVP_PKEY_free(ctx->public_key); \
-  if(ctx->private_key) EVP_PKEY_free(ctx->private_key); \
-  free(ctx); \
- } \
-} while(0)
-
-#define _libssh2_x25519_free(ctx) _libssh2_ed25519_free(ctx)
-
+#define _libssh2_ed25519_free(ctx) EVP_PKEY_free(ctx)
+#define _libssh2_x25519_free(ctx) EVP_PKEY_free(ctx)
 #endif /* ED25519 */
 
 #define _libssh2_cipher_type(name) const EVP_CIPHER *(*name)(void)
